@@ -34,15 +34,15 @@
 
 #define CONFIG_BROKER_URI "mqtt://192.168.1.101:1883"
 
-#define CONFIG_LIGHT0_BRIGHTNESS        "esp32/main_lights/brightness"
-#define CONFIG_LIGHT0_BRIGHTNESS_SET    "esp32/main_lights/brightness/set"
-#define CONFIG_LIGHT0_STATUS            "esp32/main_lights/status"
-#define CONFIG_LIGHT0_SWITCH            "esp32/main_lights/switch"
+#define CONFIG_LIGHT0_BRIGHTNESS        "tesp32/main_lights/brightness"
+#define CONFIG_LIGHT0_BRIGHTNESS_SET    "tesp32/main_lights/brightness/set"
+#define CONFIG_LIGHT0_STATUS            "tesp32/main_lights/status"
+#define CONFIG_LIGHT0_SWITCH            "tesp32/main_lights/switch"
 
-#define CONFIG_LIGHT1_BRIGHTNESS        "esp32/bed_lights/brightness"
-#define CONFIG_LIGHT1_BRIGHTNESS_SET    "esp32/bed_lights/brightness/set"
-#define CONFIG_LIGHT1_STATUS            "esp32/bed_lights/status"
-#define CONFIG_LIGHT1_SWITCH            "esp32/bed_lights/switch"
+#define CONFIG_LIGHT1_BRIGHTNESS        "tesp32/bed_lights/brightness"
+#define CONFIG_LIGHT1_BRIGHTNESS_SET    "tesp32/bed_lights/brightness/set"
+#define CONFIG_LIGHT1_STATUS            "tesp32/bed_lights/status"
+#define CONFIG_LIGHT1_SWITCH            "tesp32/bed_lights/switch"
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -61,6 +61,100 @@ char main_lights_state[5] = "OFF";
 char main_lights_brightness[5] = "0";
 char bed_lights_state[5] = "OFF";
 char bed_lights_brightness[5] = "0";
+
+static void initialize_lights_from_flash(void)
+{
+    printf("Opening Non-Volatile Storage (NVS) handle... ");
+    nvs_handle_t my_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    } else {
+        printf("Done\n");
+
+        // Read
+        printf("Reading brightness0 from NVS ... ");
+        int32_t brightness = 0; // value will default to 0, if not set yet in NVS
+        err = nvs_get_i32(my_handle, "brightness0", &brightness);
+        switch (err) {
+            case ESP_OK:
+                printf("Done\n");
+                printf("Initializing brightness to %d\n", brightness);
+                sprintf(main_lights_brightness, "%d", brightness);
+                lights_set_brightness(brightness, 0);
+                if (brightness > 0) {
+                    strcpy(main_lights_state, "ON");
+                }
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                printf("The value is not initialized yet!\n");
+                break;
+            default :
+                printf("Error (%s) reading!\n", esp_err_to_name(err));
+        }
+
+        printf("Reading brightness1 from NVS ... ");
+        brightness = 0; // value will default to 0, if not set yet in NVS
+        err = nvs_get_i32(my_handle, "brightness1", &brightness);
+        switch (err) {
+            case ESP_OK:
+                printf("Done\n");
+                printf("Initializing brightness to %d\n", brightness);
+                sprintf(bed_lights_brightness, "%d", brightness);
+                lights_set_brightness(brightness, 1);
+                if (brightness > 0) {
+                    strcpy(bed_lights_state, "ON");
+                }
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                printf("The value is not initialized yet!\n");
+                break;
+            default :
+                printf("Error (%s) reading!\n", esp_err_to_name(err));
+        }
+
+        // Close
+        nvs_close(my_handle);
+    }
+}
+
+static void write_brightness_to_flash(int light, int brightness)
+{
+    char brightness_key[12];
+    if (light == 0) {
+        strcpy(brightness_key, "brightness0");
+    } else if (light == 1) {
+        strcpy(brightness_key, "brightness1");
+    } else {
+        printf("Error: Invalid light number\n");
+        return;
+    }
+
+    printf("Opening Non-Volatile Storage (NVS) handle... ");
+    nvs_handle_t my_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    } else {
+        printf("Done\n");
+
+        // Write
+        printf("Updating light%d brightness in NVS ... ", light);
+        err = nvs_set_i32(my_handle, brightness_key, brightness);
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        // Commit written value.
+        // After setting any values, nvs_commit() must be called to ensure changes are written
+        // to flash storage. Implementations may write to storage at other times,
+        // but this is not guaranteed.
+        printf("Committing updates in NVS ... ");
+        err = nvs_commit(my_handle);
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        // Close
+        nvs_close(my_handle);
+    }
+}
 
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -164,22 +258,22 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
 
-            msg_id = esp_mqtt_client_subscribe(client, "esp32/main_lights/switch", 0);
+            msg_id = esp_mqtt_client_subscribe(client, CONFIG_LIGHT0_SWITCH, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-            msg_id = esp_mqtt_client_subscribe(client, "esp32/main_lights/brightness/set", 0);
+            msg_id = esp_mqtt_client_subscribe(client, CONFIG_LIGHT0_BRIGHTNESS_SET, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-            msg_id = esp_mqtt_client_subscribe(client, "esp32/bed_lights/switch", 0);
+            msg_id = esp_mqtt_client_subscribe(client, CONFIG_LIGHT1_SWITCH, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-            msg_id = esp_mqtt_client_subscribe(client, "esp32/bed_lights/brightness/set", 0);
+            msg_id = esp_mqtt_client_subscribe(client, CONFIG_LIGHT1_BRIGHTNESS_SET, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
-            msg_id = esp_mqtt_client_publish(client, "esp32/main_lights/status", main_lights_state, 0, 0, 0);
+            msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_STATUS, main_lights_state, 0, 0, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-            msg_id = esp_mqtt_client_publish(client, "esp32/main_lights/brightness", main_lights_brightness, 0, 0, 0);
+            msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_BRIGHTNESS, main_lights_brightness, 0, 0, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-            msg_id = esp_mqtt_client_publish(client, "esp32/bed_lights/status", bed_lights_state, 0, 0, 0);
+            msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_STATUS, bed_lights_state, 0, 0, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-            msg_id = esp_mqtt_client_publish(client, "esp32/bed_lights/brightness", bed_lights_brightness, 0, 0, 0);
+            msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_BRIGHTNESS, bed_lights_brightness, 0, 0, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
             
             break;
@@ -203,43 +297,47 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             t[event->topic_len] = '\0';
             printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
             printf("DATA=%.*s\r\n", event->data_len, event->data);
-            if (strcmp(t, "esp32/main_lights/brightness/set") == 0) {
+            if (strcmp(t, CONFIG_LIGHT0_BRIGHTNESS_SET) == 0) {
                 strncpy(main_lights_brightness, event->data, event->data_len);
                 main_lights_brightness[event->data_len] = '\0';
                 strcpy(main_lights_state, "ON");
                 lights_set_brightness(atoi(main_lights_brightness), 0);
-                msg_id = esp_mqtt_client_publish(client, "esp32/main_lights/status", main_lights_state, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_STATUS, main_lights_state, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                msg_id = esp_mqtt_client_publish(client, "esp32/main_lights/brightness", main_lights_brightness, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_BRIGHTNESS, main_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                write_brightness_to_flash(0, atoi(main_lights_brightness));
             }
-            else if (strcmp(t, "esp32/main_lights/switch") == 0) {
+            else if (strcmp(t, CONFIG_LIGHT0_SWITCH) == 0) {
                 strcpy(main_lights_brightness, "0");
                 strcpy(main_lights_state, "OFF");
                 lights_set_brightness(0, 0);
-                msg_id = esp_mqtt_client_publish(client, "esp32/main_lights/status", main_lights_state, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_STATUS, main_lights_state, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                msg_id = esp_mqtt_client_publish(client, "esp32/main_lights/brightness", main_lights_brightness, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_BRIGHTNESS, main_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                write_brightness_to_flash(0, 0);
             }
-            else if (strcmp(t, "esp32/bed_lights/brightness/set") == 0) {
+            else if (strcmp(t, CONFIG_LIGHT1_BRIGHTNESS_SET) == 0) {
                 strncpy(bed_lights_brightness, event->data, event->data_len);
                 bed_lights_brightness[event->data_len] = '\0';
                 strcpy(bed_lights_state, "ON");
                 lights_set_brightness(atoi(bed_lights_brightness), 1);
-                msg_id = esp_mqtt_client_publish(client, "esp32/bed_lights/status", bed_lights_state, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_STATUS, bed_lights_state, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                msg_id = esp_mqtt_client_publish(client, "esp32/bed_lights/brightness", bed_lights_brightness, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_BRIGHTNESS, bed_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                write_brightness_to_flash(1, atoi(bed_lights_brightness));
             }
-            else if (strcmp(t, "esp32/bed_lights/switch") == 0) {
+            else if (strcmp(t, CONFIG_LIGHT1_SWITCH) == 0) {
                 strcpy(bed_lights_brightness, "0");
                 strcpy(bed_lights_state, "OFF");
                 lights_set_brightness(0, 1);
-                msg_id = esp_mqtt_client_publish(client, "esp32/bed_lights/status", bed_lights_state, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_STATUS, bed_lights_state, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                msg_id = esp_mqtt_client_publish(client, "esp32/bed_lights/brightness", bed_lights_brightness, 0, 0, 0);
+                msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_BRIGHTNESS, bed_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                write_brightness_to_flash(1, 0);
             }
             break;
         case MQTT_EVENT_ERROR:
@@ -290,6 +388,9 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Initializing_LEDC");
     lights_ledc_init();
+
+    ESP_LOGI(TAG, "Initializing_Flash");
+    initialize_lights_from_flash();
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
