@@ -30,19 +30,19 @@
 */
 #define EXAMPLE_ESP_WIFI_SSID      "van_wifi"
 #define EXAMPLE_ESP_WIFI_PASS      "applesauce"
-#define EXAMPLE_ESP_MAXIMUM_RETRY  (5)
+#define EXAMPLE_ESP_MAXIMUM_RETRY  (25)
 
 #define CONFIG_BROKER_URI "mqtt://192.168.1.101:1883"
 
-#define CONFIG_LIGHT0_BRIGHTNESS        "tesp32/main_lights/brightness"
-#define CONFIG_LIGHT0_BRIGHTNESS_SET    "tesp32/main_lights/brightness/set"
-#define CONFIG_LIGHT0_STATUS            "tesp32/main_lights/status"
-#define CONFIG_LIGHT0_SWITCH            "tesp32/main_lights/switch"
+#define CONFIG_LIGHT0_BRIGHTNESS        "esp32/main_lights/brightness"
+#define CONFIG_LIGHT0_BRIGHTNESS_SET    "esp32/main_lights/brightness/set"
+#define CONFIG_LIGHT0_STATUS            "esp32/main_lights/status"
+#define CONFIG_LIGHT0_SWITCH            "esp32/main_lights/switch"
 
-#define CONFIG_LIGHT1_BRIGHTNESS        "tesp32/bed_lights/brightness"
-#define CONFIG_LIGHT1_BRIGHTNESS_SET    "tesp32/bed_lights/brightness/set"
-#define CONFIG_LIGHT1_STATUS            "tesp32/bed_lights/status"
-#define CONFIG_LIGHT1_SWITCH            "tesp32/bed_lights/switch"
+#define CONFIG_LIGHT1_BRIGHTNESS        "esp32/bed_lights/brightness"
+#define CONFIG_LIGHT1_BRIGHTNESS_SET    "esp32/bed_lights/brightness/set"
+#define CONFIG_LIGHT1_STATUS            "esp32/bed_lights/status"
+#define CONFIG_LIGHT1_SWITCH            "esp32/bed_lights/switch"
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -62,6 +62,8 @@ char main_lights_brightness[5] = "0";
 char bed_lights_state[5] = "OFF";
 char bed_lights_brightness[5] = "0";
 
+
+/*
 static void initialize_lights_from_flash(void)
 {
     printf("Opening Non-Volatile Storage (NVS) handle... ");
@@ -156,6 +158,8 @@ static void write_brightness_to_flash(int light, int brightness)
     }
 }
 
+*/
+
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -167,6 +171,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
             ESP_LOGI(TAG, "retry to connect to the AP");
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            esp_restart();
         }
         ESP_LOGI(TAG,"connect to the AP fail");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -279,6 +284,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+            esp_restart();
             break;
 
         case MQTT_EVENT_SUBSCRIBED:
@@ -306,7 +312,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                 msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_BRIGHTNESS, main_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                write_brightness_to_flash(0, atoi(main_lights_brightness));
+                // write_brightness_to_flash(0, atoi(main_lights_brightness));
             }
             else if (strcmp(t, CONFIG_LIGHT0_SWITCH) == 0) {
                 strcpy(main_lights_brightness, "0");
@@ -316,7 +322,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                 msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT0_BRIGHTNESS, main_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                write_brightness_to_flash(0, 0);
+                // write_brightness_to_flash(0, 0);
             }
             else if (strcmp(t, CONFIG_LIGHT1_BRIGHTNESS_SET) == 0) {
                 strncpy(bed_lights_brightness, event->data, event->data_len);
@@ -327,7 +333,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                 msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_BRIGHTNESS, bed_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                write_brightness_to_flash(1, atoi(bed_lights_brightness));
+                // write_brightness_to_flash(1, atoi(bed_lights_brightness));
             }
             else if (strcmp(t, CONFIG_LIGHT1_SWITCH) == 0) {
                 strcpy(bed_lights_brightness, "0");
@@ -337,7 +343,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                 msg_id = esp_mqtt_client_publish(client, CONFIG_LIGHT1_BRIGHTNESS, bed_lights_brightness, 0, 0, 0);
                 ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                write_brightness_to_flash(1, 0);
+                // write_brightness_to_flash(1, 0);
             }
             break;
         case MQTT_EVENT_ERROR:
@@ -389,8 +395,8 @@ void app_main(void)
     ESP_LOGI(TAG, "Initializing_LEDC");
     lights_ledc_init();
 
-    ESP_LOGI(TAG, "Initializing_Flash");
-    initialize_lights_from_flash();
+    // ESP_LOGI(TAG, "Initializing_Flash");
+    // initialize_lights_from_flash();
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
