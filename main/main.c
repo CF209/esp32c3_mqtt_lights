@@ -28,12 +28,16 @@
    If you'd rather not, just change the below entries to strings with
    the config you want - ie #define EXAMPLE_WIFI_SSID "mywifissid"
 */
+
+//Wifi info
 #define EXAMPLE_ESP_WIFI_SSID      "van_wifi"
-#define EXAMPLE_ESP_WIFI_PASS      "applesauce"
+#define EXAMPLE_ESP_WIFI_PASS      "password"
 #define EXAMPLE_ESP_MAXIMUM_RETRY  (25)
 
+//MQTT Server
 #define CONFIG_BROKER_URI "mqtt://192.168.1.101:1883"
 
+//MQTT topics
 #define CONFIG_LIGHT0_BRIGHTNESS        "esp32/main_lights/brightness"
 #define CONFIG_LIGHT0_BRIGHTNESS_SET    "esp32/main_lights/brightness/set"
 #define CONFIG_LIGHT0_STATUS            "esp32/main_lights/status"
@@ -57,13 +61,16 @@ static const char *TAG = "MQTT Light Control";
 
 static int s_retry_num = 0;
 
-char main_lights_state[5] = "OFF";
-char main_lights_brightness[5] = "0";
-char bed_lights_state[5] = "OFF";
-char bed_lights_brightness[5] = "0";
+static char main_lights_state[5] = "OFF";
+static char main_lights_brightness[5] = "0";
+static char bed_lights_state[5] = "OFF";
+static char bed_lights_brightness[5] = "0";
 
 
 /*
+//This Code used to store the state of the lights in flash memory so it could be restored on
+//startup, but this could sometimes cause the lights to blink repeatedly in some error conditions
+
 static void initialize_lights_from_flash(void)
 {
     printf("Opening Non-Volatile Storage (NVS) handle... ");
@@ -160,6 +167,7 @@ static void write_brightness_to_flash(int light, int brightness)
 
 */
 
+//Wifi event handler
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -182,6 +190,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
     }
 }
 
+//Wifi Initialization
 void wifi_init_sta(void)
 {
     s_wifi_event_group = xEventGroupCreate();
@@ -256,6 +265,11 @@ void wifi_init_sta(void)
 
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 {
+    static char main_lights_state[5] = "OFF";
+    static char main_lights_brightness[5] = "0";
+    static char bed_lights_state[5] = "OFF";
+    static char bed_lights_brightness[5] = "0";
+
     esp_mqtt_client_handle_t client = event->client;
     int msg_id;
     // your_context_t *context = event->context;
